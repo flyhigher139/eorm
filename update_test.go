@@ -124,8 +124,6 @@ func TestUpdater_Set(t *testing.T) {
 	}
 }
 
-// todo 插入组合对象
-
 func TestUpdater_SetForCombination(t *testing.T) {
 	type Person struct {
 		FirstName string
@@ -218,7 +216,7 @@ func TestUpdater_SetForCombination(t *testing.T) {
 		},
 		{
 			name:     "not zero columns",
-			builder:  memoryDB().Update(&TestModel{}).Set(AssignNotZeroColumns(&TestModel{Id: 13})...),
+			builder:  memoryDB().Update(&User{}).Set(AssignNotZeroColumns(&User{Id: 13})...),
 			wantSql:  "UPDATE `user` SET `id`=?;",
 			wantArgs: []interface{}{int64(13)},
 		},

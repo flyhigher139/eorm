@@ -124,6 +124,120 @@ func TestUpdater_Set(t *testing.T) {
 	}
 }
 
+// todo 插入组合对象
+
+func TestUpdater_SetForCombination(t *testing.T) {
+	type Person struct {
+		FirstName string
+		Age       int8
+		LastName  *sql.NullString
+	}
+	type User struct {
+		Id int64 `eorm:"auto_increment,primary_key"`
+		Person
+	}
+	u := &User{
+		Id: 12,
+		Person: Person{
+			FirstName: "Tom",
+			Age:       18,
+			LastName:  &sql.NullString{String: "Jerry", Valid: true},
+		},
+	}
+	testCases := []CommonTestCase{
+		{
+			name:     "no set",
+			builder:  memoryDB().Update(u),
+			wantSql:  "UPDATE `user` SET `id`=?,`first_name`=?,`age`=?,`last_name`=?;",
+			wantArgs: []interface{}{int64(12), "Tom", int8(18), &sql.NullString{String: "Jerry", Valid: true}},
+		},
+		{
+			name:     "set columns",
+			builder:  memoryDB().Update(u).Set(Columns("FirstName", "Age")),
+			wantSql:  "UPDATE `user` SET `first_name`=?,`age`=?;",
+			wantArgs: []interface{}{"Tom", int8(18)},
+		},
+		{
+			name:    "set invalid columns",
+			builder: memoryDB().Update(u).Set(Columns("FirstNameInvalid", "Age")),
+			wantErr: err.NewInvalidFieldError("FirstNameInvalid"),
+		},
+		{
+			name:     "set c2",
+			builder:  memoryDB().Update(u).Set(C("FirstName"), C("Age")),
+			wantSql:  "UPDATE `user` SET `first_name`=?,`age`=?;",
+			wantArgs: []interface{}{"Tom", int8(18)},
+		},
+
+		{
+			name:    "set invalid c2",
+			builder: memoryDB().Update(u).Set(C("FirstNameInvalid"), C("Age")),
+			wantErr: err.NewInvalidFieldError("FirstNameInvalid"),
+		},
+
+		{
+			name:     "set assignment",
+			builder:  memoryDB().Update(u).Set(C("FirstName"), Assign("Age", 30)),
+			wantSql:  "UPDATE `user` SET `first_name`=?,`age`=?;",
+			wantArgs: []interface{}{"Tom", 30},
+		},
+		{
+			name:    "set invalid assignment",
+			builder: memoryDB().Update(u).Set(C("FirstName"), Assign("InvalidAge", 30)),
+			wantErr: err.NewInvalidFieldError("InvalidAge"),
+		},
+		{
+			name:     "set age+1",
+			builder:  memoryDB().Update(u).Set(C("FirstName"), Assign("Age", C("Age").Add(1))),
+			wantSql:  "UPDATE `user` SET `first_name`=?,`age`=(`age`+?);",
+			wantArgs: []interface{}{"Tom", 1},
+		},
+		{
+			name:     "set age=id+1",
+			builder:  memoryDB().Update(u).Set(C("FirstName"), Assign("Age", C("Id").Add(10))),
+			wantSql:  "UPDATE `user` SET `first_name`=?,`age`=(`id`+?);",
+			wantArgs: []interface{}{"Tom", 10},
+		},
+		{
+			name:     "set age=id+(age*100)",
+			builder:  memoryDB().Update(u).Set(C("FirstName"), Assign("Age", C("Id").Add(C("Age").Multi(100)))),
+			wantSql:  "UPDATE `user` SET `first_name`=?,`age`=(`id`+(`age`*?));",
+			wantArgs: []interface{}{"Tom", 100},
+		},
+		{
+			name:     "set age=(id+(age*100))*110",
+			builder:  memoryDB().Update(u).Set(C("FirstName"), Assign("Age", C("Id").Add(C("Age").Multi(100)).Multi(110))),
+			wantSql:  "UPDATE `user` SET `first_name`=?,`age`=((`id`+(`age`*?))*?);",
+			wantArgs: []interface{}{"Tom", 100, 110},
+		},
+		{
+			name:     "not nil columns",
+			builder:  memoryDB().Update(&User{}).Set(AssignNotNilColumns(&User{Id: 13})...),
+			wantSql:  "UPDATE `user` SET `id`=?,`first_name`=?,`age`=?;",
+			wantArgs: []interface{}{int64(13), "", int8(0)},
+		},
+		{
+			name:     "not zero columns",
+			builder:  memoryDB().Update(&TestModel{}).Set(AssignNotZeroColumns(&TestModel{Id: 13})...),
+			wantSql:  "UPDATE `user` SET `id`=?;",
+			wantArgs: []interface{}{int64(13)},
+		},
+	}
+
+	for _, tc := range testCases {
+		c := tc
+		t.Run(c.name, func(t *testing.T) {
+			query, err := tc.builder.Build()
+			assert.Equal(t, err, c.wantErr)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, c.wantSql, query.SQL)
+			assert.Equal(t, c.wantArgs, query.Args)
+		})
+	}
+}
+
 func ExampleAssignNotNilColumns() {
 	db := memoryDB()
 	query, _ := db.Update(&TestModel{}).Set(AssignNotNilColumns(&TestModel{Id: 13})...).Build()

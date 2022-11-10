@@ -16,10 +16,9 @@ package eorm
 
 import (
 	"fmt"
-	"reflect"
-
 	"github.com/gotomicro/eorm/internal/errs"
 	"github.com/gotomicro/eorm/internal/valuer"
+	"reflect"
 
 	"github.com/valyala/bytebufferpool"
 )
@@ -182,4 +181,22 @@ func AssignColumns(entity interface{}, filter func(typ reflect.StructField, val 
 		}
 	}
 	return res
+}
+
+func flapFields(entity interface{}, fdTypes *[]reflect.StructField, fdValues *[]reflect.Value) {
+	typ := reflect.TypeOf(entity)
+	val := reflect.ValueOf(entity)
+	if typ.Kind() == reflect.Interface {
+		typ = typ.Elem()
+		val = val.Elem()
+	}
+	numField := val.NumField()
+	for i := 0; i < numField; i++ {
+		if !typ.Field(i).Anonymous {
+			*fdTypes = append(*fdTypes, typ.Field(i))
+			*fdValues = append(*fdValues, val.Field(i))
+			continue
+		}
+		flapFields(val.Field(i).Interface(), fdTypes, fdValues)
+	}
 }
